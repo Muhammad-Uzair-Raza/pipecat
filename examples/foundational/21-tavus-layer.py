@@ -7,6 +7,7 @@
 import asyncio
 import os
 import sys
+
 import aiohttp
 from daily_runner import configure
 from dotenv import load_dotenv
