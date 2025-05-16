@@ -11,6 +11,7 @@ from functools import partial
 from typing import Optional
 
 import aiohttp
+from daily.daily import VideoFrame
 from loguru import logger
 
 from pipecat.audio.utils import create_default_resampler
@@ -18,6 +19,7 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     Frame,
+    OutputImageRawFrame,
     StartFrame,
     StartInterruptionFrame,
     TransportMessageUrgentFrame,
@@ -50,6 +52,7 @@ class TavusVideoService(AIService):
         self._session = session
         self._sample_rate = sample_rate
 
+        self._other_participant_has_joined = False
         self._client: Optional[DailyTransportClient] = None
 
         self._conversation_id: str
@@ -91,7 +94,7 @@ class TavusVideoService(AIService):
                 on_dialout_stopped=partial(self._on_handle_callback, "on_dialout_stopped"),
                 on_dialout_error=partial(self._on_handle_callback, "on_dialout_error"),
                 on_dialout_warning=partial(self._on_handle_callback, "on_dialout_warning"),
-                on_participant_joined=partial(self._on_handle_callback, "on_participant_joined"),
+                on_participant_joined=self._on_participant_joined,
                 on_participant_left=partial(self._on_handle_callback, "on_participant_left"),
                 on_participant_updated=partial(self._on_handle_callback, "on_participant_updated"),
                 on_transcription_message=partial(
@@ -132,7 +135,27 @@ class TavusVideoService(AIService):
         logger.debug(f"TavusVideoService Pipecat client left!")
 
     async def _on_handle_callback(self, event_name, *args, **kwargs):
-        logger.debug(f"[Callback] {event_name} called with args={args}, kwargs={kwargs}")
+        logger.trace(f"[Callback] {event_name} called with args={args}, kwargs={kwargs}")
+
+    async def _on_participant_joined(self, participant):
+        participant_id = participant["id"]
+        logger.info(f"Participant joined {participant_id}")
+        if not self._other_participant_has_joined:
+            self._other_participant_has_joined = True
+            await self._client.capture_participant_video(
+                participant_id, self._on_participant_video_frame, 30
+            )
+
+    async def _on_participant_video_frame(
+        self, participant_id: str, video_frame: VideoFrame, video_source: str
+    ):
+        frame = OutputImageRawFrame(
+            image=video_frame.buffer,
+            size=(video_frame.width, video_frame.height),
+            format=video_frame.color_format,
+        )
+        frame.transport_source = video_source
+        await self.push_frame(frame)
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -194,6 +217,7 @@ class TavusVideoService(AIService):
     async def _end_conversation(self):
         await self._client.leave()
         self._client = None
+        self._other_participant_has_joined = False
         url = f"https://tavusapi.com/v2/conversations/{self._conversation_id}/end"
         headers = {"Content-Type": "application/json", "x-api-key": self._api_key}
         async with self._session.post(url, headers=headers) as r:

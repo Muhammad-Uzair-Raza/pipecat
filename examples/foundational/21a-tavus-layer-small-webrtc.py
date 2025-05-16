@@ -35,6 +35,8 @@ async def run_bot(webrtc_connection: SmallWebRTCConnection, _: argparse.Namespac
             params=TransportParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
+                video_out_enabled=True,
+                video_out_is_live=True,
                 vad_analyzer=SileroVADAnalyzer(),
             ),
         )
