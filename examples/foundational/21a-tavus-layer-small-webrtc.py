@@ -6,7 +6,6 @@
 
 import argparse
 import os
-import sys
 
 import aiohttp
 from dotenv import load_dotenv
