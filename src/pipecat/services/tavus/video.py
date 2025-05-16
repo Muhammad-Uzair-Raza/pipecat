@@ -175,6 +175,8 @@ class TavusVideoService(AIService):
             self._current_idx_str = str(frame.id)
         elif isinstance(frame, TTSAudioRawFrame):
             await self._queue_audio(frame.audio, frame.sample_rate, done=False)
+            # TODO: need to check if we should push this audio, or use the one received from Tavus
+            await self.push_frame(frame, direction)
         elif isinstance(frame, TTSStoppedFrame):
             # TODO: double check if we need to change this silence somehow
             await self._queue_audio(b"\x00\x00", self._sample_rate, done=True)
