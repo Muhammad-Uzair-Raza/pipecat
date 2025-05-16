@@ -40,7 +40,8 @@ class TavusVideoService(AIService):
         *,
         api_key: str,
         replica_id: str,
-        persona_id: str = "pipecat0",  # Use `pipecat0` so that your TTS voice is used in place of the Tavus persona
+        # persona_id: str = "pipecat0", # The audio input is disabled in this case
+        persona_id: str = "p1b65d438817",  # Using pipeline_mode "echo" and the Daily Transport.
         session: aiohttp.ClientSession,
         sample_rate: int = 16000,
         **kwargs,
@@ -68,7 +69,7 @@ class TavusVideoService(AIService):
         try:
             room_url = await self.initialize()
             daily_params = DailyParams(
-                audio_in_enabled=False,
+                audio_in_enabled=True,
                 audio_out_enabled=True,
                 audio_out_sample_rate=16000,  # TODO: we should probably fix this
                 video_in_enabled=True,
@@ -112,6 +113,11 @@ class TavusVideoService(AIService):
         except Exception as e:
             logger.error(f"Failed to setup Tavus: {e}")
             await self._end_conversation()
+
+    async def cleanup(self):
+        await super().cleanup()
+        await self._client.cleanup()
+        self._client = None
 
     async def initialize(self) -> str:
         url = "https://tavusapi.com/v2/conversations"
@@ -195,14 +201,13 @@ class TavusVideoService(AIService):
         elif isinstance(frame, TTSStartedFrame):
             await self.start_processing_metrics()
             await self.start_ttfb_metrics()
-            self._current_idx_str = str(frame.id)
         elif isinstance(frame, TTSAudioRawFrame):
             await self._queue_audio(frame.audio, frame.sample_rate, done=False)
             # TODO: need to check if we should push this audio, or use the one received from Tavus
             await self.push_frame(frame, direction)
         elif isinstance(frame, TTSStoppedFrame):
             # TODO: double check if we need to change this silence somehow
-            await self._queue_audio(b"\x00\x00", self._sample_rate, done=True)
+            # await self._queue_audio(b"\x00\x00", self._sample_rate, done=True)
             await self.stop_ttfb_metrics()
             await self.stop_processing_metrics()
         else:
@@ -210,13 +215,12 @@ class TavusVideoService(AIService):
 
     # TODO check if we are still going to need this
     async def _handle_interruptions(self):
-        await self._cancel_send_task()
-        await self._create_send_task()
+        #await self._cancel_send_task()
+        #await self._create_send_task()
         await self._send_interrupt_message()
 
     async def _end_conversation(self):
         await self._client.leave()
-        self._client = None
         self._other_participant_has_joined = False
         url = f"https://tavusapi.com/v2/conversations/{self._conversation_id}/end"
         headers = {"Content-Type": "application/json", "x-api-key": self._api_key}
@@ -235,8 +239,6 @@ class TavusVideoService(AIService):
         if self._send_task:
             await self.cancel_task(self._send_task)
             self._send_task = None
-
-    # TODO we should create a _create_receive_task
 
     async def _send_task_handler(self):
         while True:
