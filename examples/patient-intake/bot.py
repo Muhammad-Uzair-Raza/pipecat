@@ -323,7 +323,10 @@ async def main():
         #     voice_id="846d6cb0-2301-48b6-9683-48f5618ea2f6",  # Spanish-speaking Lady
         # )
 
-        llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
+        llm = OpenAILLMService(
+            api_key=os.getenv("ollama"),
+            base_url="http://localhost:11434/v1/",
+            model="llama3.1")
 
         messages = []
         context = OpenAILLMContext(messages=messages)
