@@ -5,23 +5,24 @@
 #
 import os
 import sys
-
+from deepgram import LiveOptions
 from dotenv import load_dotenv
-from loguru import logger
 
+from loguru import logger
+from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.services.gemini_multimodal_live import GeminiMultimodalLiveLLMService
+from pipecat.services.openai.llm import OpenAILLMContext, OpenAILLMService
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.network.small_webrtc import SmallWebRTCTransport
 
 load_dotenv(override=True)
 
 SYSTEM_INSTRUCTION = f"""
-"You are Gemini Chatbot, a friendly, helpful robot.
+"You are Open AI Chatbot, a friendly, helpful robot.
 
 Your goal is to demonstrate your capabilities in a succinct way.
 
@@ -41,15 +42,13 @@ async def run_bot(webrtc_connection):
             audio_out_10ms_chunks=2,
         ),
     )
-
-    llm = GeminiMultimodalLiveLLMService(
-        api_key=os.getenv("GOOGLE_API_KEY"),
-        voice_id="Puck",  # Aoede, Charon, Fenrir, Kore, Puck
-        transcribe_user_audio=True,
-        transcribe_model_audio=True,
-        system_instruction=SYSTEM_INSTRUCTION,
+    print("ope ai key",os.getenv("OPENAI_API_KEY"))
+    llm = OpenAILLMService(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        model_name="gpt-4o",  # or "gpt-3.5-turbo"
     )
 
+    # Initialize OpenAILLMContext WITHOUT 'conversation_id'
     context = OpenAILLMContext(
         [
             {
@@ -59,12 +58,22 @@ async def run_bot(webrtc_connection):
         ],
     )
     context_aggregator = llm.create_context_aggregator(context)
-
+    deepgram_api_key=os.getenv("DEEPGRAM_API_KEY")
+    stt = DeepgramSTTService(
+        api_key=deepgram_api_key,
+        live_options=LiveOptions(vad_events=True, utterance_end_ms="1000"),
+    )
+    tts = CartesiaTTSService(
+            api_key=os.getenv("CARTESIA_API_KEY"),
+            voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",  # British Reading Lady
+        )
     pipeline = Pipeline(
         [
             pipecat_transport.input(),
+            stt,
             context_aggregator.user(),
             llm,  # LLM
+            tts,
             pipecat_transport.output(),
             context_aggregator.assistant(),
         ]
